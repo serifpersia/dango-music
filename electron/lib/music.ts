@@ -4,6 +4,7 @@ import {
   getAuthedInnertube,
   refreshAuthedInnertube,
   saveMusicCookie,
+  clearMusicCookie,
   getMusicAuthStatus,
   isParserVariantError,
   verifyMusicSession,
@@ -403,6 +404,11 @@ export const musicHandlers: Record<string, Handler> = {
     }
   },
 
+  authSignOut: async () => {
+    await clearMusicCookie()
+    return { success: true }
+  },
+
   search: async (input) => {
     const q = str(input, 'q').trim()
     if (!q) return { tracks: [] as MusicTrack[] }
@@ -410,7 +416,8 @@ export const musicHandlers: Record<string, Handler> = {
     const cached = cacheGet<MusicTrack[]>(key)
     if (cached) return { tracks: cached }
     try {
-      const yt = await getInnertube()
+      const authed = await getAuthedInnertube().catch(() => null)
+      const yt = authed ?? (await getInnertube())
       const result = await yt.music.search(q, { type: 'song' })
       const tracks: MusicTrack[] = []
       for (const section of (result as YtPanel).contents ?? []) {
@@ -422,7 +429,7 @@ export const musicHandlers: Record<string, Handler> = {
         }
         if (tracks.length >= 25) break
       }
-      cacheSet(key, tracks, 300)
+      if (tracks.length > 0) cacheSet(key, tracks, 300)
       return { tracks }
     } catch (err) {
       logger.error({ err }, '[music] search failed')

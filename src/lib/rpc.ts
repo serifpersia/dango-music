@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Query } from '@tanstack/react-query'
 import { dangoUrl } from './api'
+import type { RpcContract } from './contract'
 
 interface Envelope<T> {
   result?: { data: T }
@@ -25,18 +26,18 @@ const routerOf = (path: string) => path.split('.')[0]
 
 type Interval<T> = number | false | ((query: Query<T, Error>) => number | false)
 
-export function useRpc<T>(
-  path: string,
-  input: unknown = {},
+export function useRpc<K extends keyof RpcContract>(
+  path: K,
+  input: RpcContract[K]['input'] = {} as RpcContract[K]['input'],
   opts: {
     enabled?: boolean
     staleTime?: number
-    refetchInterval?: Interval<T>
+    refetchInterval?: Interval<RpcContract[K]['output']>
   } = {}
 ) {
   return useQuery({
     queryKey: [routerOf(path), path, input],
-    queryFn: ({ signal }) => rpc<T>(path, input, signal),
+    queryFn: ({ signal }) => rpc<RpcContract[K]['output']>(path, input, signal),
     enabled: opts.enabled,
     staleTime: opts.staleTime,
     refetchInterval: opts.refetchInterval,
@@ -44,13 +45,13 @@ export function useRpc<T>(
   })
 }
 
-export function useRpcMutation<TData, TVars>(
-  path: string,
-  onSuccess?: (data: TData, vars: TVars) => void
+export function useRpcMutation<K extends keyof RpcContract>(
+  path: K,
+  onSuccess?: (data: RpcContract[K]['output'], vars: RpcContract[K]['input']) => void
 ) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (vars: TVars) => rpc<TData>(path, vars),
+    mutationFn: (vars: RpcContract[K]['input']) => rpc<RpcContract[K]['output']>(path, vars),
     onSuccess: (data, vars) => {
       onSuccess?.(data, vars)
       void qc.invalidateQueries({ queryKey: [routerOf(path)] })
@@ -58,8 +59,11 @@ export function useRpcMutation<TData, TVars>(
   })
 }
 
-export function rpcOnce<T>(path: string, input: unknown = {}): Promise<T> {
-  return rpc<T>(path, input)
+export function rpcOnce<K extends keyof RpcContract>(
+  path: K,
+  input: RpcContract[K]['input'] = {} as RpcContract[K]['input']
+): Promise<RpcContract[K]['output']> {
+  return rpc<RpcContract[K]['output']>(path, input)
 }
 
 export function useServerStatus() {

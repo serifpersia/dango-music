@@ -1,18 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRpc } from '../lib/rpc'
+export type { RadioStation } from '../lib/contract'
 
-export interface RadioStation {
-  id: string
-  name: string
-  streamUrl: string
-  homepage?: string
-  favicon?: string
-  tags?: string
-  codec?: string
-  bitrate?: number
-  source: 'listen.moe' | 'radio-browser'
-  gateway?: string
-}
 
 export interface ListenMoeSong {
   id: number
@@ -56,14 +45,10 @@ export function songArtist(song: ListenMoeSong | null): string {
 }
 
 export const useRadioStations = () =>
-  useRpc<{ stations: RadioStation[] }>('radio.stations', {}, { staleTime: STALE_5_MIN })
+  useRpc('radio.stations', {}, { staleTime: STALE_5_MIN })
 
 export const useRadioSearch = (query: string) =>
-  useRpc<{ stations: RadioStation[] }>(
-    'radio.search',
-    { q: query },
-    { enabled: query.trim().length > 0, staleTime: STALE_5_MIN }
-  )
+  useRpc('radio.search', { q: query }, { enabled: query.trim().length > 0, staleTime: STALE_5_MIN })
 
 const emptyNowPlaying: ListenMoeNowPlaying = {
   song: null,

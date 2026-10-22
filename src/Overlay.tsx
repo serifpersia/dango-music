@@ -7,6 +7,7 @@ import {
   useMusicPlaylist,
   useMusicRate,
   useMusicSaveCookie,
+  useMusicSignOut,
   useMusicSearch,
   useMusicUpNext,
 } from './hooks/useMusic'
@@ -38,7 +39,7 @@ declare global {
 }
 
 type Source = 'radio' | 'music'
-type Tab = 'search' | 'library' | 'context'
+type Tab = 'auth' | 'search' | 'library' | 'context'
 type Action = 'prev' | 'playpause' | 'next' | 'volumeup' | 'volumedown'
 
 type Binding =
@@ -226,6 +227,7 @@ export default function Overlay() {
 
   const { data: auth } = useMusicAuthStatus()
   const saveCookie = useMusicSaveCookie()
+  const signOut = useMusicSignOut()
   const { data: musicSearchData, isLoading: musicSearching } = useMusicSearch(musicQuery)
   const { data: libraryData, isLoading: libraryLoading } = useMusicLibrary(
     auth?.authenticated === true
@@ -380,7 +382,7 @@ export default function Overlay() {
     const anchor = queue[queue.length - 1] ?? track
     if (!anchor) return
     try {
-      const data = await rpcOnce<{ tracks: MusicTrack[] }>('music.upnext', { id: anchor.id })
+      const data = await rpcOnce('music.upnext', { id: anchor.id })
       const known = new Set(queue.map((t) => t.id))
       const fresh = (data.tracks || []).filter((t) => !known.has(t.id))
       if (!fresh.length) return
@@ -668,13 +670,8 @@ export default function Overlay() {
   }[] = []
 
   if (isMusic) {
-    if (!signedIn) {
-      list.push({
-        key: 'hint',
-        active: false,
-        onClick: () => {},
-        text: 'Paste your YouTube Music cookie below to load your library.',
-      })
+    if (tab === 'auth') {
+      // Auth UI is rendered separately.
     } else if (tab === 'search') {
       for (const t of musicResults)
         list.push({
@@ -722,13 +719,15 @@ export default function Overlay() {
   }
 
   const busy = isMusic
-    ? tab === 'search'
-      ? musicSearching
-      : tab === 'library'
-        ? libraryLoading
-        : context?.playlist
-          ? playlistLoading
-          : upnextLoading
+    ? tab === 'auth'
+      ? false
+      : tab === 'search'
+        ? musicSearching
+        : tab === 'library'
+          ? libraryLoading
+          : context?.playlist
+            ? playlistLoading
+            : upnextLoading
     : radioQuery
       ? radioSearching
       : featuredLoading
@@ -1047,6 +1046,12 @@ export default function Overlay() {
       {isMusic && (
         <div className="music-views">
           <button
+            className={`music-view${tab === 'auth' ? ' on' : ''}`}
+            onClick={() => setTab('auth')}
+          >
+            Auth
+          </button>
+          <button
             className={`music-view${tab === 'search' ? ' on' : ''}`}
             onClick={() => setTab('search')}
           >
@@ -1079,76 +1084,90 @@ export default function Overlay() {
         </div>
       )}
 
-      <form
-        className="music-search"
-        onSubmit={(event) => {
-          event.preventDefault()
-          if (isMusic) {
-            const query = musicInput.trim()
-            if (/^[A-Za-z0-9_-]{11}$/.test(query)) {
-              void rpcOnce<{ tracks: MusicTrack[] }>('music.trackById', { id: query })
-                .then(({ tracks }) => {
-                  const directTrack = tracks?.[0]
-                  if (directTrack) {
-                    setMusicQuery('')
-                    playTrack(directTrack, [directTrack], {
-                      label: directTrack.title,
-                      playlist: null,
-                    })
-                  } else {
-                    setMusicQuery(query)
-                  }
-                })
-                .catch(() => setMusicQuery(query))
-            } else {
-              setMusicQuery(query)
-            }
-          } else setRadioQuery(radioInput.trim())
-        }}
-      >
-        <Icon name="search" />
-        <input
-          value={isMusic ? musicInput : radioInput}
-          onChange={(event) =>
-            isMusic
-              ? setMusicInput(event.currentTarget.value)
-              : setRadioInput(event.currentTarget.value)
-          }
-          placeholder={isMusic ? 'Search YouTube Music' : 'Search stations'}
-          aria-label={isMusic ? 'Search YouTube Music' : 'Search radio stations'}
-        />
-        {(isMusic ? musicQuery : radioQuery) && (
-          <button
-            type="button"
-            className="music-ghost"
-            onClick={() => (isMusic ? setMusicQuery('') : setRadioQuery(''))}
-          >
-            <Icon name="times" />
-          </button>
-        )}
-      </form>
-
-      {!signedIn && isMusic && (
+      {!(isMusic && tab === 'auth') && (
         <form
-          className="music-cookie"
+          className="music-search"
           onSubmit={(event) => {
             event.preventDefault()
-            saveCookie.mutate({ cookie })
+            if (isMusic) {
+              const query = musicInput.trim()
+              if (/^[A-Za-z0-9_-]{11}$/.test(query)) {
+                void rpcOnce('music.trackById', { id: query })
+                  .then(({ tracks }) => {
+                    const directTrack = tracks?.[0]
+                    if (directTrack) {
+                      setMusicQuery('')
+                      playTrack(directTrack, [directTrack], {
+                        label: directTrack.title,
+                        playlist: null,
+                      })
+                    } else {
+                      setMusicQuery(query)
+                    }
+                  })
+                  .catch(() => setMusicQuery(query))
+              } else {
+                setMusicQuery(query)
+              }
+            } else setRadioQuery(radioInput.trim())
           }}
         >
+          <Icon name="search" />
           <input
-            value={cookie}
-            onChange={(event) => setCookie(event.currentTarget.value)}
-            placeholder="Paste your YouTube Music cookie"
-            aria-label="YouTube Music cookie"
+            value={isMusic ? musicInput : radioInput}
+            onChange={(event) =>
+              isMusic
+                ? setMusicInput(event.currentTarget.value)
+                : setRadioInput(event.currentTarget.value)
+            }
+            placeholder={isMusic ? 'Search YouTube Music' : 'Search stations'}
+            aria-label={isMusic ? 'Search YouTube Music' : 'Search radio stations'}
           />
-          <button type="submit" disabled={!cookie.trim() || saveCookie.isPending}>
-            {saveCookie.isPending ? '...' : 'Save'}
-          </button>
+          {(isMusic ? musicQuery : radioQuery) && (
+            <button
+              type="button"
+              className="music-ghost"
+              onClick={() => (isMusic ? setMusicQuery('') : setRadioQuery(''))}
+            >
+              <Icon name="times" />
+            </button>
+          )}
         </form>
       )}
 
-      {listOpen && (
+      {isMusic && tab === 'auth' && (
+        <div className="music-auth">
+          <form
+            className="music-cookie"
+            onSubmit={(event) => {
+              event.preventDefault()
+              saveCookie.mutate({ cookie })
+            }}
+          >
+            <input
+              value={cookie}
+              onChange={(event) => setCookie(event.currentTarget.value)}
+              placeholder="Paste your YouTube Music cookie"
+              aria-label="YouTube Music cookie"
+            />
+            <button type="submit" disabled={!cookie.trim() || saveCookie.isPending}>
+              {saveCookie.isPending ? '...' : 'Save'}
+            </button>
+          </form>
+          {signedIn && (
+            <button
+              type="button"
+              className="music-ghost"
+              onClick={() => signOut.mutate({})}
+              disabled={signOut.isPending}
+            >
+              {signOut.isPending ? '...' : 'Sign out'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {listOpen && tab !== 'auth' && (
         <ul className="music-list" ref={listRef}>
           {busy && !list.length && (
             <li className="music-empty">
